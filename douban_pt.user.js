@@ -1,25 +1,44 @@
 // ==UserScript==
 // @name         Douban PT Connector
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  Search pt.sjtu.edu.cn for resources when visiting Douban movie pages.
 // @author       Antigravity
 // @match        https://movie.douban.com/subject/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_addStyle
 // @connect      pt.sjtu.edu.cn
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // Configuration
     const PT_DOMAIN = 'pt.sjtu.edu.cn';
-    const PT_SEARCH_URL = `https://${PT_DOMAIN}/torrents.php`;
+    const PT_BASE_URL = `https://${PT_DOMAIN}`;
+    const PT_SEARCH_URL = `${PT_BASE_URL}/torrents.php`;
+    let currentSearchUrl = '';
 
     // Helpers
     function log(msg) {
         console.log(`[DoubanPT] ${msg}`);
     }
+
+    // Styles
+    GM_addStyle(`
+        .douban-pt-container { margin-bottom: 20px; overflow-x: auto; }
+        .douban-pt-container h2 { color: #007722; font-size: 16px; margin-bottom: 12px; }
+        .pt-table { width: 100%; border-collapse: collapse; border: 1px solid #ddd; font-size: 13px; min-width: 600px; } /* Ensure table doesn't collapse too much */
+        .pt-table td { padding: 5px; border: 1px solid #ddd; vertical-align: middle; }
+        .pt-table .rowfollow { background-color: #f9f9f9; }
+        .pt-table .colhead { background-color: #eee; font-weight: bold; text-align: center; }
+        .pt-table .embedded { border: none; padding: 0; text-align: left; }
+        .pt-table .embedded b { font-size: 14px; }
+        .pt-table img { vertical-align: middle; }
+        .pt-table .red { color: red; }
+        .pt-table a { color: #37a; text-decoration: none; }
+        .pt-table a:hover { text-decoration: underline; }
+    `);
 
     // 1. Extract Movie Name
     function getMovieName() {
@@ -31,8 +50,6 @@
 
         const fullTitle = titleNode.innerText.trim();
         // Logic: "ChineseName ForeignName" -> take "ChineseName"
-        // Splitting by space might be too aggressive if the Chinese name has spaces, but usually it doesn't.
-        // Let's take the first part of the split.
         const chineseName = fullTitle.split(' ')[0];
         log(`Extracted text: "${fullTitle}" -> Suggest Search: "${chineseName}"`);
         return chineseName;
@@ -40,6 +57,7 @@
 
     // 2. UI Injection
     function createContainer() {
+        // Inject into sidebar (.aside) as requested
         const aside = document.querySelector('div.aside');
         if (!aside) {
             log('Sidebar (.aside) not found.');
@@ -47,22 +65,18 @@
         }
 
         const container = document.createElement('div');
-        container.className = 'gray_ad douban-pt-container';
+        container.className = 'douban-pt-container';
         container.innerHTML = `
             <h2>
-                PT Resources
+                <i>PT Resources</i>
                 &nbsp;·&nbsp;·&nbsp;·&nbsp;·&nbsp;·&nbsp;·
             </h2>
-            <ul class="bs" id="douban-pt-list" style="margin-bottom: 0;">
-                <li style="border: none; padding: 10px 0; color: #666;">
-                    Loading...
-                </li>
-            </ul>
+            <div id="douban-pt-content">
+                Loading...
+            </div>
         `;
 
-        // Insert as the first item in aside, or append?
-        // Douban usually puts "Where to watch" near the top.
-        // Let's try to insert after the first element or just prepend.
+        // Insert as the first item in aside
         if (aside.firstChild) {
             aside.insertBefore(container, aside.firstChild);
         } else {
@@ -72,122 +86,142 @@
         return container;
     }
 
-    function updateSubtitle(count) {
-        const h2 = document.querySelector('.douban-pt-container h2');
-        if(h2) {
-             h2.innerHTML = `
-                PT Resources (${count})
-                &nbsp;·&nbsp;·&nbsp;·&nbsp;·&nbsp;·&nbsp;·
-            `;
-        }
-    }
-
     function renderResults(results) {
-        const listContainer = document.getElementById('douban-pt-list');
-        if (!listContainer) return;
+        const contentDiv = document.getElementById('douban-pt-content');
+        if (!contentDiv) return;
 
-        listContainer.innerHTML = ''; // Clear loading state
+        contentDiv.innerHTML = '';
 
         if (results.length === 0) {
-            listContainer.innerHTML = `
-                <li style="border: none; padding: 10px 0; color: #666;">
-                    No resources found.
-                </li>`;
+            contentDiv.innerHTML = '<div style="padding:10px; color:#666;">No resources found.</div>';
             return;
         }
 
-        updateSubtitle(results.length);
+        const table = document.createElement('table');
+        table.className = 'pt-table';
 
-        results.slice(0, 5).forEach(item => { // Show top 5
-            const li = document.createElement('li');
-            li.style.borderBottom = '1px dashed #ddd';
-            li.style.padding = '8px 0';
-            li.style.overflow = 'hidden';
+        // No Header requested
+        const tbody = document.createElement('tbody');
+        table.appendChild(tbody);
 
-            li.innerHTML = `
-                <div style="float: left; width: 70%;">
-                     <a href="${item.link}" target="_blank" title="${item.fullTitle}"
-                        style="display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        results.slice(0, 10).forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = 'rowfollow';
+
+            const catImgUrl = item.catImg ? (item.catImg.startsWith('http') ? item.catImg : `${PT_BASE_URL}/${item.catImg}`) : '';
+
+            tr.innerHTML = `
+                <td align="center" style="width: 30px;">
+                    <a href="${item.dlLink}" target="_blank" title="Click to Download">
+                        <img src="${catImgUrl}" alt="DL" style="max-width: 24px; max-height: 24px;">
+                    </a>
+                </td>
+                <td align="center" style="width: 40px;">
+                    <span class="red" style="font-weight: bold;">${item.seeds}</span>
+                </td>
+                <td align="left">
+                    <a href="${item.link}" target="_blank" title="${item.fullTitle}" style="font-weight: bold; color: #37a;">
                         ${item.title}
-                     </a>
-                </div>
-                <div style="float: right; width: 30%; text-align: right; color: #999; font-size: 12px;">
-                    ${item.size}
-                </div>
-                <div style="clear: both;"></div>
+                    </a>
+                </td>
             `;
-            listContainer.appendChild(li);
+            tbody.appendChild(tr);
         });
 
-        if (results.length > 5) {
-             const li = document.createElement('li');
-             li.style.textAlign = 'right';
-             li.style.paddingTop = '5px';
-             li.innerHTML = `<a href="${currentSearchUrl}" target="_blank">See all ${results.length} results &raquo;</a>`;
-             listContainer.appendChild(li);
+        contentDiv.appendChild(table);
+
+        // Update header count
+        const h2 = document.querySelector('.douban-pt-container h2');
+        if (h2) {
+            h2.innerHTML = `<i><a href="${currentSearchUrl}" target="_blank" style="color: #007722;">PT Resources</a> (${results.length})</i>&nbsp;·&nbsp;·&nbsp;·&nbsp;·&nbsp;·&nbsp;·`;
         }
     }
 
     function renderError(msg) {
-        const listContainer = document.getElementById('douban-pt-list');
-        if (listContainer) {
-            listContainer.innerHTML = `
-                <li style="border: none; padding: 10px 0; color: #f44336;">
-                    ${msg}
-                </li>`;
+        const contentDiv = document.getElementById('douban-pt-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = `<div style="padding:10px; color:red;">${msg}</div>`;
         }
     }
 
     // 3. Search & Parse
-    let currentSearchUrl = '';
-
     function parseResponse(responseText) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(responseText, 'text/html');
         const rows = doc.querySelectorAll('table.torrents > tbody > tr');
         const results = [];
 
-        // Rows usually: header, then data.
-        // Need to inspect the structure of pt.sjtu.edu.cn torrents table.
-        // Assumption: typical NexusPHP structure.
-        // Row check: has class 'sticky' or just trs.
-        // Columns often: Type, Name, DL, Comments, Time, Size, Seeders, Leechers, Completed
-
         rows.forEach(row => {
-            // Skip header if typical header class (often 'colhead')
-            if (row.querySelector('td.colhead')) return;
-
+            // Skip header/footer rows (headers usually have class 'colhead', footers empty)
+            // Valid rows usually have class 'rowfollow' or similar
             const tds = row.querySelectorAll('td');
             if (tds.length < 5) return;
 
-            // This is a heuristic guess for standard NexusPHP.
-            // Adjust indices based on actual site structure if needed.
-            // Usually Title is in the 2nd cell (index 1).
-            const titleLink = tds[1].querySelector('a[href^="details.php"]');
+            // Check if it's a real torrent row
+            if (!row.querySelector('table.torrentname')) return;
+
+            // 1. Title & Subtitle within nested table
+            const titleTable = row.querySelector('table.torrentname');
+            const titleLink = titleTable.querySelector('a[href^="details.php"]');
             if (!titleLink) return;
 
-            // Size usually around index 4 or 5
-            // Let's iterate to find size-like text if unsure, or pin it if we know NexusPHP.
-            // NexusPHP standard: Type, Name, (actions), Time, Size, S/L...
-            
-            // Let's try to grab Size by regex from simple text content of likely cells?
-            // Or look for specific cells.
-            // Let's grab the link and raw text for now.
-            
-            // For robustness without seeing the exact DOM:
-            // Find the cell with the size (e.g., "1.2 GB")
-            let size = 'N/A';
-            // Size is often 5th td (index 4)
-            if (tds[4]) size = tds[4].innerText.trim();
+            const fullTitle = titleLink.title || titleLink.innerText.trim();
+            const link = `${PT_BASE_URL}/${titleLink.getAttribute('href')}`;
 
-            const title = titleLink.title || titleLink.innerText.trim();
-            const link = `https://${PT_DOMAIN}/${titleLink.getAttribute('href')}`;
+            // Download Link
+            const dlNode = titleTable.querySelector('a[href^="download.php"]');
+            const dlLink = dlNode ? `${PT_BASE_URL}/${dlNode.getAttribute('href')}` : '#';
+
+            // Subtitle
+            const embeddedTd = titleTable.querySelector('td.embedded');
+            let subtitle = '';
+            if (embeddedTd) {
+                const clone = embeddedTd.cloneNode(true);
+                const b = clone.querySelector('b');
+                if (b) b.remove();
+                subtitle = clone.innerText.trim();
+            }
+
+            // 0. Category
+            const catImgNode = tds[0].querySelector('img');
+            const catImg = catImgNode ? catImgNode.getAttribute('src') : '';
+            const catAlt = catImgNode ? catImgNode.getAttribute('alt') : '';
+
+            // Columns 
+            const comments = tds[2] ? tds[2].innerText.trim() : '0';
+            const timeNode = tds[3].querySelector('span');
+            const timePretty = timeNode ? timeNode.innerText.trim() : (tds[3] ? tds[3].innerText.trim() : '');
+            const timeFull = timeNode ? timeNode.getAttribute('title') : '';
+
+            const size = tds[4] ? tds[4].innerText.trim() : '';
+
+            // Seeds extraction (User requested specific target)
+            // Look for a link with toseeders=1 inside the row
+            const seedLink = row.querySelector('a[href*="toseeders=1"]');
+            const seeds = seedLink ? seedLink.innerText.trim() : (tds[5] ? tds[5].innerText.trim() : '-');
+
+            const leechers = tds[6] ? tds[6].innerText.trim() : '';
+            const completed = tds[7] ? tds[7].innerText.trim() : '';
+
+            const uploaderNode = tds[8] ? tds[8].querySelector('a') : null;
+            const uploader = uploaderNode ? uploaderNode.innerText.trim() : (tds[8] ? tds[8].innerText.trim() : '');
 
             results.push({
-                title: title,
-                fullTitle: title, // Store full for tooltip
+                title: fullTitle,
+                fullTitle: fullTitle,
                 link: link,
-                size: size
+                dlLink: dlLink,
+                subtitle: subtitle,
+                catImg: catImg,
+                catAlt: catAlt,
+                comments: comments,
+                timePretty: timePretty,
+                timeFull: timeFull,
+                size: size,
+                seeds: seeds,
+                leechers: leechers,
+                completed: completed,
+                uploader: uploader
             });
         });
 
@@ -195,6 +229,7 @@
     }
 
     function searchPT(keyword) {
+        // Query paramaters
         const params = new URLSearchParams({
             incldead: 0,
             spstate: 0,
@@ -212,21 +247,29 @@
         GM_xmlhttpRequest({
             method: 'GET',
             url: url,
-            onload: function(response) {
+            onload: function (response) {
                 if (response.status === 200) {
                     try {
                         const results = parseResponse(response.responseText);
+
+                        // Sort by seeds descending
+                        results.sort((a, b) => {
+                            const seedA = parseInt(a.seeds) || 0;
+                            const seedB = parseInt(b.seeds) || 0;
+                            return seedB - seedA;
+                        });
+
                         log(`Found ${results.length} results.`);
                         renderResults(results);
                     } catch (e) {
                         console.error(e);
-                        renderError('Error parsing results.');
+                        renderError('Error parsing results: ' + e.message);
                     }
                 } else {
                     renderError(`Network error: ${response.status}`);
                 }
             },
-            onerror: function(err) {
+            onerror: function (err) {
                 console.error(err);
                 renderError('Request failed.');
             }
