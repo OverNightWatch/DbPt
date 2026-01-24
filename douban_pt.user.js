@@ -108,6 +108,11 @@
         results.forEach(item => {
             const tr = document.createElement('tr');
             tr.className = 'rowfollow';
+            if (item.isSeeding) {
+                tr.style.backgroundColor = '#dff0d8'; // Light green for seeding
+            } else if (item.isIncomplete) {
+                tr.style.backgroundColor = '#FFB6C1'; // Pink for incomplete
+            }
 
             const catImgUrl = item.catImg ? (item.catImg.startsWith('http') ? item.catImg : `${PT_BASE_URL}/${item.catImg}`) : '';
 
@@ -204,6 +209,11 @@
             const leechers = tds[6] ? tds[6].innerText.trim() : '';
             const completed = tds[7] ? tds[7].innerText.trim() : '';
 
+            // Check if seeding (class snatched_yes_yes)
+            const isSeeding = row.querySelector('.snatched_yes_yes') !== null;
+            // Check if incomplete/not seeding (class snatched_no_no)
+            const isIncomplete = row.querySelector('.snatched_no_no') !== null;
+
             const uploaderNode = tds[8] ? tds[8].querySelector('a') : null;
             const uploader = uploaderNode ? uploaderNode.innerText.trim() : (tds[8] ? tds[8].innerText.trim() : '');
 
@@ -222,7 +232,9 @@
                 seeds: seeds,
                 leechers: leechers,
                 completed: completed,
-                uploader: uploader
+                uploader: uploader,
+                isSeeding: isSeeding,
+                isIncomplete: isIncomplete
             });
         });
 
