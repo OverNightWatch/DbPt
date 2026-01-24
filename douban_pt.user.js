@@ -26,10 +26,10 @@
 
     // Styles
     GM_addStyle(`
-        .douban-pt-container { margin-bottom: 20px; overflow-x: auto; }
-        .douban-pt-container h2 { color: #007722; font-size: 16px; margin-bottom: 12px; }
-        .pt-table { width: 100%; border-collapse: collapse; border: 1px solid #ddd; font-size: 13px; min-width: 600px; } /* Ensure table doesn't collapse too much */
-        .pt-table td { padding: 5px; border: 1px solid #ddd; vertical-align: middle; }
+        .douban-pt-container { margin-bottom: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto; }
+        .douban-pt-container h2 { color: #007722; font-size: 16px; margin: 0 0 10px 0; position: sticky; top: 0; background: white; z-index: 10; padding: 10px; border-bottom: 1px solid #eee; }
+        .pt-table { width: 100%; border-collapse: collapse; border: none; font-size: 13px; min-width: 600px; }
+        .pt-table td { padding: 5px; border: none; vertical-align: middle; }
         .pt-table .rowfollow { background-color: #f9f9f9; }
         .pt-table .colhead { background-color: #eee; font-weight: bold; text-align: center; }
         .pt-table .embedded { border: none; padding: 0; text-align: left; }
@@ -100,11 +100,12 @@
         const table = document.createElement('table');
         table.className = 'pt-table';
 
-        // No Header requested
+        // Render ALL results (no slice)
         const tbody = document.createElement('tbody');
         table.appendChild(tbody);
 
-        results.slice(0, 10).forEach(item => {
+        // Render ALL results (no slice)
+        results.forEach(item => {
             const tr = document.createElement('tr');
             tr.className = 'rowfollow';
 
@@ -116,7 +117,7 @@
                         <img src="${catImgUrl}" alt="DL" style="max-width: 24px; max-height: 24px;">
                     </a>
                 </td>
-                <td align="center" style="width: 40px;">
+                <td align="center" style="width: 20px; padding: 0 2px;">
                     <span class="red" style="font-weight: bold;">${item.seeds}</span>
                 </td>
                 <td align="left">
