@@ -1,0 +1,12 @@
+.douban-pt-container { margin-bottom: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto; }
+.douban-pt-container h2 { color: #007722; font-size: 16px; margin: 0 0 10px 0; position: sticky; top: 0; background: white; z-index: 10; padding: 10px; border-bottom: 1px solid #eee; }
+.pt-table { width: 100%; border-collapse: collapse; border: none; font-size: 13px; min-width: 600px; }
+.pt-table td { padding: 5px; border: none; vertical-align: middle; }
+.pt-table .rowfollow { background-color: #f9f9f9; }
+.pt-table .colhead { background-color: #eee; font-weight: bold; text-align: center; }
+.pt-table .embedded { border: none; padding: 0; text-align: left; }
+.pt-table .embedded b { font-size: 14px; }
+.pt-table img { vertical-align: middle; }
+.pt-table .red { color: red; }
+.pt-table a { color: #37a; text-decoration: none; }
+.pt-table a:hover { text-decoration: underline; }
